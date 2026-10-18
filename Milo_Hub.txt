@@ -1,0 +1,257 @@
+--[[
+    Milo Hub
+    Simplified edition: Aimlock + ESP only
+    Neon yellow theme
+]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local NEON = Color3.fromRGB(255, 245, 0)
+local DARK = Color3.fromRGB(20, 20, 16)
+local DARK2 = Color3.fromRGB(36, 36, 22)
+local WHITE = Color3.fromRGB(255, 255, 255)
+
+local function getGuiParent()
+    local ok, result = pcall(function()
+        if typeof(gethui) == "function" then return gethui() end
+        return LocalPlayer:WaitForChild("PlayerGui")
+    end)
+    if ok then return result end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local parent = getGuiParent()
+pcall(function()
+    local old = parent:FindFirstChild("MiloHub")
+    if old then old:Destroy() end
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MiloHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = parent
+
+local Main = Instance.new("Frame")
+Main.Name = "MainFrame"
+Main.Size = UDim2.new(0, 300, 0, 168)
+Main.Position = UDim2.new(0.5, -150, 0.5, -84)
+Main.BackgroundColor3 = DARK
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+local stroke = Instance.new("UIStroke", Main)
+stroke.Color = NEON
+stroke.Thickness = 1.5
+
+local Bar = Instance.new("Frame")
+Bar.Name = "TitleBar"
+Bar.Size = UDim2.new(1, 0, 0, 38)
+Bar.BackgroundColor3 = DARK2
+Bar.BorderSizePixel = 0
+Bar.Parent = Main
+Instance.new("UICorner", Bar).CornerRadius = UDim.new(0, 10)
+local cover = Instance.new("Frame")
+cover.Size = UDim2.new(1, 0, 0, 10)
+cover.Position = UDim2.new(0, 0, 1, -10)
+cover.BackgroundColor3 = DARK2
+cover.BorderSizePixel = 0
+cover.Parent = Bar
+
+local Title = Instance.new("TextLabel")
+Title.Name = "TitleLabel"
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Milo Hub"
+Title.TextColor3 = NEON
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 17
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Bar
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.new(0, 27, 0, 26)
+Close.Position = UDim2.new(1, -33, 0, 6)
+Close.BackgroundColor3 = NEON
+Close.Text = "×"
+Close.TextColor3 = DARK
+Close.Font = Enum.Font.GothamBold
+Close.TextSize = 20
+Close.Parent = Bar
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 6)
+Close.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+
+-- Drag the menu on mouse or touchscreen.
+do
+    local dragging, dragInput, dragStart, startPos
+    Bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = Main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    Bar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input == dragInput or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+local function makeButton(name, label, y)
+    local b = Instance.new("TextButton")
+    b.Name = name
+    b.Size = UDim2.new(1, -24, 0, 42)
+    b.Position = UDim2.new(0, 12, 0, y)
+    b.BackgroundColor3 = DARK2
+    b.BorderSizePixel = 0
+    b.Text = label
+    b.TextColor3 = NEON
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.AutoButtonColor = false
+    b.Parent = Main
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    local line = Instance.new("UIStroke", b)
+    line.Color = NEON
+    line.Thickness = 1
+    b.MouseEnter:Connect(function()
+        TweenService:Create(b, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(62, 62, 28)}):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        TweenService:Create(b, TweenInfo.new(0.12), {BackgroundColor3 = DARK2}):Play()
+    end)
+    return b
+end
+
+local AimBtn = makeButton("AimlockButton", "AIMLOCK: OFF", 52)
+local EspBtn = makeButton("ESPButton", "ESP: OFF", 102)
+
+-- Aimlock toggle: rotates the local character toward the nearest living player.
+local aimActive = false
+local aimConnection
+local function getClosestCharacter()
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local closest, shortest = nil, math.huge
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local targetChar = player.Character
+            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+            local humanoid = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+            if targetRoot and humanoid and humanoid.Health > 0 then
+                local distance = (root.Position - targetRoot.Position).Magnitude
+                if distance < shortest then closest, shortest = targetChar, distance end
+            end
+        end
+    end
+    return closest
+end
+
+AimBtn.MouseButton1Click:Connect(function()
+    aimActive = not aimActive
+    AimBtn.Text = aimActive and "AIMLOCK: ON" or "AIMLOCK: OFF"
+    AimBtn.BackgroundColor3 = aimActive and Color3.fromRGB(78, 78, 20) or DARK2
+    if aimConnection then aimConnection:Disconnect(); aimConnection = nil end
+    if aimActive then
+        aimConnection = RunService.RenderStepped:Connect(function()
+            local target = getClosestCharacter()
+            local character = LocalPlayer.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
+            if root and targetRoot then
+                local p, t = root.Position, targetRoot.Position
+                root.CFrame = CFrame.new(p, Vector3.new(t.X, p.Y, t.Z))
+            end
+        end)
+    end
+end)
+
+-- ESP toggle: shows player name and health above each character.
+local espActive = false
+local espObjects = {}
+local characterConnections = {}
+local function clearESP(player)
+    local gui = espObjects[player]
+    if gui then gui:Destroy(); espObjects[player] = nil end
+end
+local function addESP(player, character)
+    if player == LocalPlayer or not espActive then return end
+    clearESP(player)
+    local head = character:WaitForChild("Head", 5)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if not head or not humanoid or not espActive then return end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "MiloESP"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 150, 0, 42)
+    billboard.StudsOffset = Vector3.new(0, 2.4, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = character
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = NEON
+    text.TextStrokeColor3 = Color3.new(0, 0, 0)
+    text.TextStrokeTransparency = 0.15
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 12
+    text.Parent = billboard
+    local function update()
+        if billboard.Parent and humanoid.Parent then
+            text.Text = string.format("%s\nHP: %d/%d", player.Name, math.floor(humanoid.Health), math.floor(humanoid.MaxHealth))
+        end
+    end
+    update()
+    local conn = humanoid.HealthChanged:Connect(update)
+    characterConnections[player] = conn
+    espObjects[player] = billboard
+end
+
+local function setupPlayer(player)
+    if player == LocalPlayer then return end
+    player.CharacterAdded:Connect(function(character)
+        if espActive then task.spawn(addESP, player, character) end
+    end)
+    if espActive and player.Character then task.spawn(addESP, player, player.Character) end
+end
+for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
+Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(function(player)
+    clearESP(player)
+    if characterConnections[player] then characterConnections[player]:Disconnect(); characterConnections[player] = nil end
+end)
+
+EspBtn.MouseButton1Click:Connect(function()
+    espActive = not espActive
+    EspBtn.Text = espActive and "ESP: ON" or "ESP: OFF"
+    EspBtn.BackgroundColor3 = espActive and Color3.fromRGB(78, 78, 20) or DARK2
+    if espActive then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then task.spawn(addESP, player, player.Character) end
+        end
+    else
+        for player in pairs(espObjects) do clearESP(player) end
+        for player, conn in pairs(characterConnections) do conn:Disconnect(); characterConnections[player] = nil end
+    end
+end)
+
+ScreenGui.Destroying:Connect(function()
+    if aimConnection then aimConnection:Disconnect() end
+    for player in pairs(espObjects) do clearESP(player) end
+    for player, conn in pairs(characterConnections) do conn:Disconnect(); characterConnections[player] = nil end
+end)
